@@ -142,14 +142,14 @@ let PLANE=localStorage.getItem('sp-plane')||'787'; if(!PL[PLANE]) PLANE='787';
 let SPOT=localStorage.getItem('sp-spot')||'nyc'; if(!SPOTS[SPOT]) SPOT='nyc';
 const TOK=(localStorage.getItem('sp-ion')||TOKEN||'').trim(); if(TOK) C.Ion.defaultAccessToken=TOK;
 const viewer=new C.Viewer('v',{timeline:false,animation:false,baseLayerPicker:false,geocoder:false,homeButton:false,sceneModePicker:false,
-  navigationHelpButton:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,shouldAnimate:false,msaaSamples:4,
+  navigationHelpButton:false,fullscreenButton:false,infoBox:false,selectionIndicator:false,shouldAnimate:false,msaaSamples:4,useBrowserRecommendedResolution:false,
   baseLayer:false, terrain:undefined});
-const scene=viewer.scene; scene.globe.baseColor=C.Color.fromCssColorString('#4a5a3a'); scene.fog.enabled=true; scene.fog.density=1.6e-4;
+const scene=viewer.scene; scene.globe.baseColor=C.Color.fromCssColorString('#4a5a3a'); scene.fog.enabled=true; scene.fog.density=0.8e-4;
 scene.postProcessStages.fxaa.enabled=true; scene.skyAtmosphere.show=true; scene.highDynamicRange=false;
 scene.screenSpaceCameraController.enableInputs=false; scene.debugShowFramesPerSecond=false;
 let tiles=null, google=false;
 async function loadWorld(){
-  try{ tiles=await C.createGooglePhotorealistic3DTileset(undefined,{showCreditsOnScreen:true,maximumScreenSpaceError:16,preloadFlightDestinations:true,cacheBytes:768*1024*1024});
+  try{ tiles=await C.createGooglePhotorealistic3DTileset(undefined,{showCreditsOnScreen:true,maximumScreenSpaceError:4,dynamicScreenSpaceError:false,skipLevelOfDetail:false,preloadFlightDestinations:true,preloadWhenHidden:true,cacheBytes:1536*1024*1024,maximumCacheOverflowBytes:1024*1024*1024});
        scene.primitives.add(tiles); scene.globe.show=false; google=true; }
   catch(e){ console.warn('Google 3D tiles failed, using Cesium World Terrain + OSM Buildings',e); $('note').textContent=(e&&e.statusCode===401||!TOK)?'Paste your Cesium ion token in the menu (M)':'Google 3D Tiles not on your Cesium account – using Cesium terrain + OSM buildings'; $('menu').classList.remove('hid');
     try{ scene.setTerrain(C.Terrain.fromWorldTerrain()); scene.imageryLayers.addImageryProvider(await C.IonImageryProvider.fromAssetId(2)); scene.primitives.add(await C.createOsmBuildingsAsync()); }catch(e2){ console.warn(e2); } }
@@ -274,12 +274,13 @@ fill();
 $('tok').value=TOK;
 $('go').onclick=async()=>{ const nt=$('tok').value.trim(); if(!nt){ $('note').textContent='Paste your Cesium ion token first'; return; } if(nt!==TOK){ localStorage.setItem('sp-ion',nt); location.reload(); return; } const np=$('selP').value; SPOT=$('selS').value; localStorage.setItem('sp-spot',SPOT); $('menu').classList.add('hid'); audioInit();
   if(np!==PLANE||!model){ PLANE=np; localStorage.setItem('sp-plane',PLANE); $('note').textContent='Loading aircraft…'; try{ await loadPlane(); $('note').textContent=''; }catch(e){ $('note').textContent='Aircraft failed to load: '+e; return; } }
-  const sp=SPOTS[SPOT]; noonAt(sp.lon); await reset(); S.paused=false; };
+  const sp=SPOTS[SPOT]; noonAt(sp.lon); await reset(); await tilesReady(); S.paused=false; };
+async function tilesReady(){ if(!tiles) return; S.paused=true; $('note').textContent='Loading scenery…'; const t0=performance.now(); await new Promise(r=>setTimeout(r,500)); while(!tiles.tilesLoaded&&performance.now()-t0<12000) await new Promise(r=>setTimeout(r,250)); $('note').textContent=''; }
 function noonAt(lon){ const d=new Date(); d.setUTCHours(0,0,0,0); const t=C.JulianDate.fromDate(new Date(d.getTime()+(13-lon/15)*3600e3)); viewer.clock.currentTime=t; }
 (async()=>{ camMode(); if(!TOK){ $('note').textContent='Paste your Cesium ion token below, then press Fly'; $('tok').focus(); return; }
   $('note').textContent='Loading world…'; noonAt(SPOTS[SPOT].lon); await loadWorld(); const n=$('note').textContent;
   $('note').textContent='Loading aircraft…'; try{ await loadPlane(); }catch(e){ $('note').textContent='Aircraft failed to load: '+e; return; }
-  $('note').textContent=n==='Loading world…'?'':n; await reset(); S.paused=false; })();
+  $('note').textContent=n==='Loading world…'?'':n; await reset(); await tilesReady(); S.paused=false; })();
 
 </script>
 </body></html>
