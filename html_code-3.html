@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Sandbox 沙盒世界 - 物理版</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a2e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            color: white;
+            user-select: none;
+        }
+        h1 {
+            margin: 8px 0 4px;
+            color: #f0c040;
+            text-shadow: 0 0 10px #f0c040;
+            font-size: 1.5rem;
+        }
+        #main {
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+            margin-top: 6px;
+        }
+        #gameCanvas {
+            border: 3px solid #f0c040;
+            box-shadow: 0 0 20px rgba(240,192,64,0.4);
+            cursor: crosshair;
+            display: block;
+        }
+        #sidebar {
+            width: 155px;
+            background: #16213e;
+            border: 2px solid #f0c040;
+            border-radius: 8px;
+            padding: 8px;
+            max-height: 640px;
+            overflow-y: auto;
+        }
+        #sidebar::-webkit-scrollbar { width: 4px; }
+        #sidebar::-webkit-scrollbar-thumb { background: #f0c040; border-radius: 2px; }
+        .sectionTitle {
+            color: #f0c040;
+            text-align: center;
+            margin: 6px 0 5px;
+            font-size: 0.82rem;
+            font-weight: bold;
+            border-bottom: 1px solid #333;
+            padding-bottom: 4px;
+        }
+        .blockBtn {
+            width: 100%;
+            padding: 5px 6px;
+            margin-bottom: 4px;
+            border: 2px solid transparent;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            font-weight: bold;
+            color: white;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            text-align: left;
+        }
+        .blockBtn:hover { transform: scale(1.03); filter: brightness(1.2); }
+        .blockBtn.selected { border-color: white; box-shadow: 0 0 6px white; }
+        .colorDot {
+            width: 16px; height: 16px;
+            border-radius: 3px;
+            flex-shrink: 0;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        .toolBtn {
+            width: 100%;
+            padding: 5px;
+            margin-bottom: 4px;
+            border: 2px solid transparent;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            font-weight: bold;
+            background: #2a2a4a;
+            color: white;
+            transition: all 0.15s;
+        }
+        .toolBtn:hover { background: #3a3a6a; }
+        .toolBtn.selected { border-color: #f0c040; background: #3a3a6a; }
+        #brushSize { width: 100%; accent-color: #f0c040; }
+        #brushLabel { text-align: center; font-size: 0.75rem; color: #aaa; margin-top: 2px; }
+        .actionBtn {
+            width: 100%;
+            padding: 5px;
+            margin-bottom: 4px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.78rem;
+            transition: filter 0.15s;
+        }
+        .actionBtn:hover { filter: brightness(1.2); }
+        #controls {
+            margin-top: 5px;
+            font-size: 0.72rem;
+            color: #888;
+            text-align: center;
+        }
+        kbd {
+            background: #333; border: 1px solid #555;
+            border-radius: 3px; padding: 1px 4px; font-size: 0.7rem;
+        }
+        #physicsInfo {
+            font-size: 0.7rem;
+            color: #69f0ae;
+            text-align: center;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+<h1>🌍 Sandbox 物理沙盒</h1>
+<div id="main">
+    <canvas id="gameCanvas" width="608" height="576"></canvas>
+    <div id="sidebar">
+        <div class="sectionTitle">🧱 固體方塊</div>
+        <div id="solidBlocks"></div>
+        <div class="sectionTitle">💧 液體/粉末</div>
+        <div id="fluidBlocks"></div>
+        <div class="sectionTitle">🔥 特殊</div>
+        <div id="specialBlocks"></div>
+        <div class="sectionTitle">🔧 工具</div>
+        <button class="toolBtn selected" id="toolPlace" onclick="setTool('place')">✏️ 放置</button>
+        <button class="toolBtn" id="toolErase" onclick="setTool('erase')">🧹 清除</button>
+        <button class="toolBtn" id="toolFill"  onclick="setTool('fill')">🪣 填充</button>
+        <div class="sectionTitle">🖌️ 筆刷</div>
+        <input type="range" id="brushSize" min="1" max="6" value="2">
+        <div id="brushLabel">大小: 2</div>
+        <div class="sectionTitle">⚙️ 物理</div>
+        <button class="actionBtn" style="background:#4caf50" onclick="togglePhysics()">▶️ 物理: 開</button>
+        <button class="actionBtn" style="background:#ff5722" onclick="clearWorld()">🗑️ 清除</button>
+        <button class="actionBtn" style="background:#2196f3" onclick="generateTerrain()">🌍 生成地形</button>
+        <button class="actionBtn" style="background:#9c27b0" onclick="saveWorld()">💾 儲存</button>
+        <button class="actionBtn" style="background:#607d8b" onclick="loadWorld()">📂 載入</button>
+    </div>
+</div>
+<div id="physicsInfo">粒子數: <span id="particleCount">0</span> | FPS: <span id="fpsDisplay">0</span></div>
+<div id="controls">
+    左鍵放置 | 右鍵清除 |
+    <kbd>G</kbd>網格 <kbd>P</kbd>暫停 <kbd>1-0</kbd>選方塊
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const TILE = 4;  // 每格像素（小格子讓物理更細膩）
+const COLS = canvas.width  / TILE;  // 152
+const ROWS = canvas.height / TILE;  // 144
+
+// ════════════════════════════════════════════════
+//  方塊類型定義
+// ════════════════════════════════════════════════
+const TYPE = {
+    EMPTY:    0,
+    // 固體
+    STONE:    1,
+    DIRT:     2,
+    GRASS:    3,
+    WOOD:     4,
+    BRICK:    5,
+    METAL:    6,
+    ICE:      7,
+    // 粉末/顆粒
+    SAND:     8,
+    SNOW:     9,
+    GUNPOWDER:10,
+    // 液體
+    WATER:    11,
+    OIL:      12,
+    ACID:     13,
+    // 氣體/火
+    FIRE:     14,
+    SMOKE:    15,
+    STEAM:    16,
+    // 特殊
+    LAVA:     17,
+    EMBER:    18,  // 燃燒中的木頭/草
+    FUSE:     19,  // 導火線
+    TORCH:    20,  // 火把（持續產生火）
+};
+
+// 方塊屬性
+const BLOCK_DEF = {
+    [TYPE.EMPTY]:     { name:'空氣',    color:null,      category:'none'   },
+    [TYPE.STONE]:     { name:'石頭',    color:'#9e9e9e', category:'solid',  flammable:false },
+    [TYPE.DIRT]:      { name:'泥土',    color:'#795548', category:'solid',  flammable:false },
+    [TYPE.GRASS]:     { name:'草地',    color:'#4caf50', category:'solid',  flammable:true,  burnTime:80  },
+    [TYPE.WOOD]:      { name:'木頭',    color:'#8d6e63', category:'solid',  flammable:true,  burnTime:200 },
+    [TYPE.BRICK]:     { name:'磚塊',    color:'#c62828', category:'solid',  flammable:false },
+    [TYPE.METAL]:     { name:'金屬',    color:'#607d8b', category:'solid',  flammable:false },
+    [TYPE.ICE]:       { name:'冰塊',    color:'#b3e5fc', category:'solid',  flammable:false, melts:true   },
+    [TYPE.SAND]:      { name:'沙子',    color:'#fdd835', category:'powder', flammable:false },
+    [TYPE.SNOW]:      { name:'雪',      color:'#e3f2fd', category:'powder', flammable:false, melts:true   },
+    [TYPE.GUNPOWDER]: { name:'火藥',    color:'#424242', category:'powder', flammable:true,  burnTime:5, explosive:true },
+    [TYPE.WATER]:     { name:'水',      color:'#1e88e5', category:'liquid', flammable:false },
+    [TYPE.OIL]:       { name:'油',      color:'#827717', category:'liquid', flammable:true,  burnTime:300 },
+    [TYPE.ACID]:      { name:'酸液',    color:'#76ff03', category:'liquid', flammable:false, corrosive:true },
+    [TYPE.FIRE]:      { name:'火焰',    color:'#ff5722', category:'gas'    },
+    [TYPE.SMOKE]:     { name:'煙霧',    color:'#616161', category:'gas'    },
+    [TYPE.STEAM]:     { name:'蒸氣',    color:'#b0bec5', category:'gas'    },
+    [TYPE.LAVA]:      { name:'熔岩',    color:'#e64a19', category:'liquid', flammable:false, hot:true     },
+    [TYPE.EMBER]:     { name:'燃燒',    color:'#ff9800', category:'solid'  },
+    [TYPE.FUSE]:      { name:'導火線',  color:'#5d4037', category:'solid',  flammable:true,  burnTime:30  },
+    [TYPE.TORCH]:     { name:'火把',    color:'#ffb300', category:'solid',  flammable:false },
+};
+
+// UI 分類
+const SOLID_BLOCKS   = [TYPE.STONE, TYPE.DIRT, TYPE.GRASS, TYPE.WOOD, TYPE.BRICK, TYPE.METAL, TYPE.ICE, TYPE.FUSE, TYPE.TORCH];
+const FLUID_BLOCKS   = [TYPE.SAND, TYPE.SNOW, TYPE.GUNPOWDER, TYPE.WATER, TYPE.OIL, TYPE.ACID];
+const SPECIAL_BLOCKS = [TYPE.FIRE, TYPE.LAVA, TYPE.SMOKE, TYPE.STEAM];
+
+// ════════════════════════════════════════════════
+//  格子資料結構
+// ════════════════════════════════════════════════
+// 每格: { type, life, updated, vel }
+let grid = [];
+let nextGrid = [];
+
+function makeCell(type=0) {
+    return { type, life: 0, updated: false, vel: 0 };
+}
+
+function initGrid() {
+    grid = [];
+    for (let r = 0; r < ROWS; r++) {
+        grid[r] = [];
+        for (let c = 0; c < COLS; c++) {
+            grid[r][c] = makeCell(0);
+        }
+    }
+}
+
+function getCell(r, c) {
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return null;
+    return grid[r][c];
+}
+
+function setCell(r, c, type, life=0) {
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+    grid[r][c].type = type;
+    grid[r][c].life = life;
+    grid[r][c].updated = false;
+}
+
+function isEmpty(r, c) {
+    const cell = getCell(r, c);
+    return cell && cell.type === TYPE.EMPTY;
+}
+
+function isType(r, c, ...types) {
+    const cell = getCell(r, c);
+    return cell && types.includes(cell.type);
+}
+
+// ════════════════════════════════════════════════
+//  物理更新
+// ════════════════════════════════════════════════
+let physicsOn = true;
+let updateTick = 0;
+
+function updatePhysics() {
+    if (!physicsOn) return;
+    updateTick++;
+
+    // 重置 updated 旗標
+    for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+            grid[r][c].updated = false;
+
+    // 從下往上更新（讓重力正確）
+    for (let r = ROWS-1; r >= 0; r--) {
+        // 隨機左右順序避免偏向
+        const leftToRight = Math.random() > 0.5;
+        for (let ci = 0; ci < COLS; ci++) {
+            const c = leftToRight ? ci : COLS-1-ci;
+            const cell = grid[r][c];
+            if (cell.updated) continue;
+
+            switch(cell.type) {
+                case TYPE.SAND:
+                case TYPE.SNOW:
+                case TYPE.GUNPOWDER:
+                    updatePowder(r, c); break;
+                case TYPE.WATER:
+                    updateLiquid(r, c, 4); break;
+                case TYPE.OIL:
+                    updateLiquid(r, c, 3); break;
+                case TYPE.ACID:
+                    updateAcid(r, c); break;
+                case TYPE.LAVA:
+                    updateLava(r, c); break;
+                case TYPE.FIRE:
+                    updateFire(r, c); break;
+                case TYPE.SMOKE:
+                case TYPE.STEAM:
+                    updateGas(r, c); break;
+                case TYPE.EMBER:
+                    updateEmber(r, c); break;
+                case TYPE.ICE:
+                    updateIce(r, c); break;
+                case TYPE.TORCH:
+                    updateTorch(r, c); break;
+                case TYPE.GRASS:
+                case TYPE.WOOD:
+                case TYPE.FUSE:
+                    updateFlammable(r, c); break;
+            }
+        }
+    }
+}
+
+// ── 粉末（沙、雪、火藥）────────────────────────
+function updatePowder(r, c) {
+    const cell = grid[r][c];
+    // 向下
+    if (tryMove(r, c, r+1, c)) return;
+    // 斜下
+    const d = Math.random() > 0.5 ? 1 : -1;
+    if (tryMove(r, c, r+1, c+d)) return;
+    if (tryMove(r, c, r+1, c-d)) return;
+    // 沙子在水中下沉
+    if (cell.type === TYPE.SAND || cell.type === TYPE.GUNPOWDER) {
+        if (isType(r+1, c, TYPE.WATER, TYPE.OIL)) {
+            swap(r, c, r+1, c);
+        }
+    }
+}
+
+// ── 液體 ────────────────────────────────────────
+function updateLiquid(r, c, spread) {
+    if (tryMove(r, c, r+1, c)) return;
+    const d = Math.random() > 0.5 ? 1 : -1;
+    if (tryMove(r, c, r+1, c+d)) return;
+    if (tryMove(r, c, r+1, c-d)) return;
+    // 橫向流動
+    for (let i = 1; i <= spread; i++) {
+        if (tryMove(r, c, r, c + d*i)) return;
+    }
+    for (let i = 1; i <= spread; i++) {
+        if (tryMove(r, c, r, c - d*i)) return;
+    }
+}
+
+// ── 酸液 ────────────────────────────────────────
+function updateAcid(r, c) {
+    updateLiquid(r, c, 3);
+    // 腐蝕周圍
+    const neighbors = [[r-1,c],[r+1,c],[r,c-1],[r,c+1]];
+    for (const [nr, nc] of neighbors) {
+        const n = getCell(nr, nc);
+        if (!n) continue;
+        const def = BLOCK_DEF[n.type];
+        if (def && def.category === 'solid' && n.type !== TYPE.METAL && n.type !== TYPE.BRICK) {
+            if (Math.random() < 0.005) {
+                setCell(nr, nc, TYPE.EMPTY);
+                if (Math.random() < 0.3) setCell(r, c, TYPE.EMPTY); // 酸也消耗
+                spawnParticle(nr, nc, TYPE.SMOKE);
+            }
+        }
+    }
+}
+
+// ── 熔岩 ────────────────────────────────────────
+function updateLava(r, c) {
+    updateLiquid(r, c, 2);
+    // 加熱周圍 → 點燃
+    const neighbors = [[r-1,c],[r+1,c],[r,c-1],[r,c+1],[r-1,c-1],[r-1,c+1],[r+1,c-1],[r+1,c+1]];
+    for (const [nr, nc] of neighbors) {
+        const n = getCell(nr, nc);
+        if (!n) continue;
+        if (n.type === TYPE.WATER) {
+            setCell(nr, nc, TYPE.STEAM);
+            if (Math.random() < 0.1) setCell(r, c, TYPE.STONE); // 熔岩遇水變石
+            return;
+        }
+        const def = BLOCK_DEF[n.type];
+        if (def && def.flammable && Math.random() < 0.02) {
+            ignite(nr, nc);
+        }
+        if (n.type === TYPE.ICE && Math.random() < 0.05) {
+            setCell(nr, nc, TYPE.WATER);
+        }
+    }
+    // 熔岩偶爾產生煙
+    if (Math.random() < 0.02) spawnParticle(r-1, c, TYPE.SMOKE);
+}
+
+// ── 火焰 ────────────────────────────────────────
+function updateFire(r, c) {
+    const cell = grid[r][c];
+    cell.life--;
+
+    if (cell.life <= 0) {
+        setCell(r, c, TYPE.EMPTY);
+        if (Math.random() < 0.4) spawnParticle(r-1, c, TYPE.SMOKE);
+        return;
+    }
+
+    // 火焰上升
+    if (isEmpty(r-1, c) && Math.random() < 0.3) {
+        setCell(r-1, c, TYPE.FIRE);
+        grid[r-1][c].life = 10 + Math.floor(Math.random()*15);
+        grid[r-1][c].updated = true;
+    }
+
+    // 點燃周圍可燃物
+    const neighbors = [[r-1,c],[r+1,c],[r,c-1],[r,c+1],[r-1,c-1],[r-1,c+1]];
+    for (const [nr, nc] of neighbors) {
+        const n = getCell(nr, nc);
+        if (!n) continue;
+        const def = BLOCK_DEF[n.type];
+        if (def && def.flammable && Math.random() < 0.03) {
+            ignite(nr, nc);
+        }
+        // 火遇水熄滅
+        if (n.type === TYPE.WATER && Math.random() < 0.1) {
+            setCell(r, c, TYPE.STEAM);
+            return;
+        }
+        // 火藥爆炸
+        if (n.type === TYPE.GUNPOWDER && Math.random() < 0.1) {
+            explode(nr, nc, 8);
+        }
+    }
+
+    // 產生煙
+    if (Math.random() < 0.05) spawnParticle(r-1, c, TYPE.SMOKE);
+    cell.updated = true;
+}
+
+// ── 點燃 ────────────────────────────────────────
+function ignite(r, c) {
+    const cell = getCell(r, c);
+    if (!cell) return;
+    const def = BLOCK_DEF[cell.type];
+    if (!def || !def.flammable) return;
+
+    if (def.explosive) {
+        explode(r, c, 12);
+        return;
+    }
+    // 變成燃燒狀態
+    setCell(r, c, TYPE.EMBER);
+    grid[r][c].life = def.burnTime || 100;
+    // 同時產生火焰
+    spawnFire(r-1, c);
+}
+
+function spawnFire(r, c) {
+    if (!isEmpty(r, c)) return;
+    setCell(r, c, TYPE.FIRE);
+    grid[r][c].life = 15 + Math.floor(Math.random()*20);
+}
+
+function spawnParticle(r, c, type) {
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+    if (!isEmpty(r, c)) return;
+    setCell(r, c, type);
+    if (type === TYPE.SMOKE || type === TYPE.STEAM) {
+        grid[r][c].life = 40 + Math.floor(Math.random()*40);
+    }
+}
+
+// ── 爆炸 ────────────────────────────────────────
+function explode(r, c, radius) {
+    setCell(r, c, TYPE.EMPTY);
+    for (let dr = -radius; dr <= radius; dr++) {
+        for (let dc = -radius; dc <= radius; dc++) {
+            const dist = Math.sqrt(dr*dr + dc*dc);
+            if (dist > radius) continue;
+            const nr = r+dr, nc = c+dc;
+            const n = getCell(nr, nc);
+            if (!n) continue;
+            if (Math.random() < (1 - dist/radius) * 0.8) {
+                if (n.type !== TYPE.METAL && n.type !== TYPE.STONE && n.type !== TYPE.BRICK) {
+                    if (Math.random() < 0.5) {
+                        setCell(nr, nc, TYPE.FIRE);
+                        grid[nr][nc].life = 20 + Math.floor(Math.random()*30);
+                    } else {
+                        setCell(nr, nc, TYPE.EMPTY);
+                    }
+                }
+            }
+        }
+    }
+    // 爆炸煙霧
+    for (let i = 0; i < 20; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const d = Math.random() * radius;
+        const sr = Math.round(r + Math.sin(angle)*d);
+        const sc = Math.round(c + Math.cos(angle)*d);
+        spawnParticle(sr, sc, TYPE.SMOKE);
+    }
+}
+
+// ── 燃燒中的方塊 ────────────────────────────────
+function updateEmber(r, c) {
+    const cell = grid[r][c];
+    cell.life--;
+
+    // 產生火焰
+    if (Math.random() < 0.3) spawnFire(r-1, c);
+    if (Math.random() < 0.1) spawnFire(r, c-1);
+    if (Math.random() < 0.1) spawnFire(r, c+1);
+
+    // 點燃鄰居
+    const neighbors = [[r-1,c],[r+1,c],[r,c-1],[r,c+1]];
+    for (const [nr, nc] of neighbors) {
+        const n = getCell(nr, nc);
+        if (!n) continue;
+        const def = BLOCK_DEF[n.type];
+        if (def && def.flammable && Math.random() < 0.005) ignite(nr, nc);
+        if (n.type === TYPE.WATER && Math.random() < 0.05) {
+            setCell(r, c, TYPE.EMPTY);
+            return;
+        }
+    }
+
+    if (cell.life <= 0) {
+        setCell(r, c, TYPE.EMPTY);
+        spawnParticle(r, c, TYPE.SMOKE);
+    }
+    cell.updated = true;
+}
+
+// ── 氣體（煙、蒸氣）────────────────────────────
+function updateGas(r, c) {
+    const cell = grid[r][c];
+    cell.life--;
+    if (cell.life <= 0) { setCell(r, c, TYPE.EMPTY); return; }
+
+    // 向上飄
+    if (tryMove(r, c, r-1, c)) return;
+    const d = Math.random() > 0.5 ? 1 : -1;
+    if (tryMove(r, c, r-1, c+d)) return;
+    if (tryMove(r, c, r-1, c-d)) return;
+    if (tryMove(r, c, r, c+d)) return;
+    if (tryMove(r, c, r, c-d)) return;
+    cell.updated = true;
+}
+
+// ── 冰塊 ────────────────────────────────────────
+function updateIce(r, c) {
+    // 遇到火/熔岩/高溫融化
+    const neighbors = [[r-1,c],[r+1,c],[r,c-1],[r,c+1]];
+    for (const [nr, nc] of neighbors) {
+        const n = getCell(nr, nc);
+        if (!n) continue;
+        if ((n.type === TYPE.FIRE || n.type === TYPE.LAVA || n.type === TYPE.EMBER) && Math.random() < 0.02) {
+            setCell(r, c, TYPE.WATER);
+            return;
+        }
+    }
+}
+
+// ── 火把 ────────────────────────────────────────
+function updateTorch(r, c) {
+    if (Math.random() < 0.15) spawnFire(r-1, c);
+}
+
+// ── 可燃固體 ────────────────────────────────────
+function updateFlammable(r, c) {
+    const cell = grid[r][c];
+    // 檢查是否被火/熔岩點燃
+    const neighbors = [[r-1,c],[r+1,c],[r,c-1],[r,c+1]];
+    for (const [nr, nc] of neighbors) {
+        const n = getCell(nr, nc);
+        if (!n) continue;
+        if ((n.type === TYPE.FIRE || n.type === TYPE.LAVA || n.type === TYPE.EMBER) && Math.random() < 0.005) {
+            ignite(r, c);
+            return;
+        }
+    }
+}
+
+// ── 移動輔助 ────────────────────────────────────
+function tryMove(r, c, nr, nc) {
+    if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return false;
+    const src = grid[r][c];
+    const dst = grid[nr][nc];
+    if (dst.type === TYPE.EMPTY) {
+        swap(r, c, nr, nc);
+        return true;
+    }
+    return false;
+}
+
+function swap(r1, c1, r2, c2) {
+    const tmp = { ...grid[r1][c1] };
+    grid[r1][c1] = { ...grid[r2][c2], updated: true };
+    grid[r2][c2] = { ...tmp, updated: true };
+}
+
+// ════════════════════════════════════════════════
+//  渲染
+// ════════════════════════════════════════════════
+let showGrid = false;
+let animTick = 0;
+
+// 顏色變化（讓火焰/熔岩有動畫感）
+const FIRE_COLORS  = ['#ff1744','#ff5722','#ff9800','#ffeb3b','#fff176'];
+const LAVA_COLORS  = ['#bf360c','#e64a19','#ff5722','#ff7043'];
+const SMOKE_COLORS = ['#424242','#616161','#757575','#9e9e9e'];
+const STEAM_COLORS = ['#90a4ae','#b0bec5','#cfd8dc','#eceff1'];
+const EMBER_COLORS = ['#e65100','#ef6c00','#f57c00','#fb8c00','#ff9800'];
+const ACID_COLORS  = ['#64dd17','#76ff03','#b2ff59','#ccff90'];
+const WATER_COLORS = ['#0d47a1','#1565c0','#1976d2','#1e88e5'];
+
+function getCellColor(cell, r, c) {
+    const t = animTick;
+    switch(cell.type) {
+        case TYPE.FIRE:
+            return FIRE_COLORS[Math.floor((t*0.3 + r + c) % FIRE_COLORS.length)];
+        case TYPE.LAVA:
+            return LAVA_COLORS[Math.floor((t*0.1 + r*0.5 + c*0.3) % LAVA_COLORS.length)];
+        case TYPE.SMOKE:
+            return SMOKE_COLORS[Math.floor((t*0.05 + r + c) % SMOKE_COLORS.length)];
+        case TYPE.STEAM:
+            return STEAM_COLORS[Math.floor((t*0.05 + r + c) % STEAM_COLORS.length)];
+        case TYPE.EMBER:
+            return EMBER_COLORS[Math.floor((t*0.2 + r + c) % EMBER_COLORS.length)];
+        case TYPE.ACID:
+            return ACID_COLORS[Math.floor((t*0.15 + r + c) % ACID_COLORS.length)];
+        case TYPE.WATER:
+            return WATER_COLORS[Math.floor((t*0.05 + c*0.2) % WATER_COLORS.length)];
+        case TYPE.ICE: {
+            const shimmer = Math.sin(t*0.1 + r + c) > 0.7;
+            return shimmer ? '#e1f5fe' : '#b3e5fc';
+        }
+        case TYPE.GUNPOWDER:
+            return Math.random() < 0.02 ? '#757575' : '#424242';
+        default:
+            return BLOCK_DEF[cell.type]?.color || '#fff';
+    }
+}
+
+function draw() {
+    animTick++;
+
+    // 背景
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 繪製格子
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const cell = grid[r][c];
+            if (cell.type === TYPE.EMPTY) continue;
+
+            const color = getCellColor(cell, r, c);
+            if (!color) continue;
+
+            // 透明度
+            let alpha = 1;
+            if (cell.type === TYPE.SMOKE || cell.type === TYPE.STEAM) {
+                alpha = Math.min(1, cell.life / 30) * 0.7;
+            } else if (cell.type === TYPE.WATER || cell.type === TYPE.OIL) {
+                alpha = 0.8;
+            } else if (cell.type === TYPE.ACID) {
+                alpha = 0.85;
+            } else if (cell.type === TYPE.FIRE) {
+                alpha = Math.min(1, cell.life / 10);
+            }
+
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = color;
+            ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
+
+            // 發光效果
+            if (cell.type === TYPE.FIRE || cell.type === TYPE.LAVA || cell.type === TYPE.EMBER || cell.type === TYPE.TORCH) {
+                ctx.globalAlpha = alpha * 0.3;
+                ctx.fillStyle = '#ffeb3b';
+                ctx.fillRect(c*TILE - 1, r*TILE - 1, TILE+2, TILE+2);
+            }
+        }
+    }
+    ctx.globalAlpha = 1;
+
+    // 網格
+    if (showGrid) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.lineWidth = 0.5;
+        for (let c = 0; c <= COLS; c += 4) {
+            ctx.beginPath();
+            ctx.moveTo(c*TILE, 0); ctx.lineTo(c*TILE, canvas.height);
+            ctx.stroke();
+        }
+        for (let r = 0; r <= ROWS; r += 4) {
+            ctx.beginPath();
+            ctx.moveTo(0, r*TILE); ctx.lineTo(canvas.width, r*TILE);
+            ctx.stroke();
+        }
+    }
+
+    // 滑鼠預覽
+    if (hoverC >= 0 && hoverR >= 0) {
+        const half = Math.floor(brushSize/2);
+        const px = (hoverC - half) * TILE;
+        const py = (hoverR - half) * TILE;
+        const ps = brushSize * TILE;
+        ctx.strokeStyle = currentTool === 'erase' ? 'rgba(255,0,0,0.8)' : 'rgba(255,255,255,0.8)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px, py, ps, ps);
+    }
+}
+
+// ════════════════════════════════════════════════
+//  UI 建立
+// ════════════════════════════════════════════════
+function buildBlockButtons(containerId, types) {
+    const container = document.getElementById(containerId);
+    types.forEach((id, i) => {
+        const def = BLOCK_DEF[id];
+        if (!def) return;
+        const btn = document.createElement('button');
+        btn.className = 'blockBtn' + (id === selectedBlock ? ' selected' : '');
+        btn.id = 'block_' + id;
+        btn.innerHTML = `<div class="colorDot" style="background:${def.color || '#555'}"></div>${def.name}`;
+        btn.style.background = (def.color || '#555') + '33';
+        btn.onclick = () => selectBlock(id);
+        container.appendChild(btn);
+    });
+}
+
+buildBlockButtons('solidBlocks',   SOLID_BLOCKS);
+buildBlockButtons('fluidBlocks',   FLUID_BLOCKS);
+buildBlockButtons('specialBlocks', SPECIAL_BLOCKS);
+
+let selectedBlock = TYPE.SAND;
+let currentTool = 'place';
+let brushSize = 2;
+let hoverR = -1, hoverC = -1;
+let isDrawing = false;
+let physicsBtn = document.querySelector('.actionBtn');
+
+function selectBlock(id) {
+    selectedBlock = id;
+    document.querySelectorAll('.blockBtn').forEach(b => b.classList.remove('selected'));
+    const btn = document.getElementById('block_' + id);
+    if (btn) btn.classList.add('selected');
+    if (currentTool === 'erase') setTool('place');
+}
+
+function setTool(tool) {
+    currentTool = tool;
+    document.querySelectorAll('.toolBtn').forEach(b => b.classList.remove('selected'));
+    const btn = document.getElementById('tool' + tool.charAt(0).toUpperCase() + tool.slice(1));
+    if (btn) btn.classList.add('selected');
+}
+
+document.getElementById('brushSize').addEventListener('input', function() {
+    brushSize = parseInt(this.value);
+    document.getElementById('brushLabel').textContent = '大小: ' + brushSize;
+});
+
+function togglePhysics() {
+    physicsOn = !physicsOn;
+    const btn = document.querySelector('.actionBtn');
+    btn.textContent = physicsOn ? '▶️ 物理: 開' : '⏸️ 物理: 關';
+    btn.style.background = physicsOn ? '#4caf50' : '#9e9e9e';
+}
+
+// ════════════════════════════════════════════════
+//  放置方塊
+// ════════════════════════════════════════════════
+function placeBlock(r, c, type) {
+    const half = Math.floor(brushSize/2);
+    for (let dr = -half; dr < brushSize-half; dr++) {
+        for (let dc = -half; dc < brushSize-half; dc++) {
+            const nr = r+dr, nc = c+dc;
+            if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+            if (type === TYPE.EMPTY) {
+                setCell(nr, nc, TYPE.EMPTY);
+            } else {
+                if (grid[nr][nc].type === TYPE.EMPTY || currentTool === 'place') {
+                    setCell(nr, nc, type);
+                    // 設定初始生命值
+                    if (type === TYPE.FIRE) grid[nr][nc].life = 20 + Math.floor(Math.random()*20);
+                    if (type === TYPE.SMOKE) grid[nr][nc].life = 60 + Math.floor(Math.random()*40);
+                    if (type === TYPE.STEAM) grid[nr][nc].life = 50 + Math.floor(Math.random()*30);
+                    if (type === TYPE.EMBER) grid[nr][nc].life = 150;
+                }
+            }
+        }
+    }
+}
+
+function floodFill(r, c, targetType, fillType) {
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+    if (grid[r][c].type !== targetType) return;
+    if (targetType === fillType) return;
+    setCell(r, c, fillType);
+    floodFill(r+1,c,targetType,fillType);
+    floodFill(r-1,c,targetType,fillType);
+    floodFill(r,c+1,targetType,fillType);
+    floodFill(r,c-1,targetType,fillType);
+}
+
+// ════════════════════════════════════════════════
+//  滑鼠事件
+// ════════════════════════════════════════════════
+function getRC(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        r: Math.floor((e.clientY - rect.top)  / TILE),
+        c: Math.floor((e.clientX - rect.left) / TILE)
+    };
+}
+
+canvas.addEventListener('mousedown', e => {
+    e.preventDefault();
+    isDrawing = true;
+    const {r, c} = getRC(e);
+    if (currentTool === 'fill') {
+        floodFill(r, c, grid[r]?.[c]?.type ?? 0, selectedBlock);
+    } else {
+        const type = (currentTool === 'erase' || e.button === 2) ? TYPE.EMPTY : selectedBlock;
+        placeBlock(r, c, type);
+    }
+});
+
+canvas.addEventListener('mousemove', e => {
+    const {r, c} = getRC(e);
+    hoverR = r; hoverC = c;
+    if (isDrawing && currentTool !== 'fill') {
+        const type = (currentTool === 'erase' || e.buttons === 2) ? TYPE.EMPTY : selectedBlock;
+        placeBlock(r, c, type);
+    }
+});
+
+canvas.addEventListener('mouseup',    () => isDrawing = false);
+canvas.addEventListener('mouseleave', () => { isDrawing = false; hoverR = -1; hoverC = -1; });
+canvas.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    const {r, c} = getRC(e);
+    placeBlock(r, c, TYPE.EMPTY);
+});
+
+// ════════════════════════════════════════════════
+//  鍵盤
+// ════════════════════════════════════════════════
+const keyBlocks = [
+    TYPE.SAND, TYPE.WATER, TYPE.FIRE, TYPE.STONE,
+    TYPE.WOOD, TYPE.OIL, TYPE.LAVA, TYPE.GUNPOWDER,
+    TYPE.ACID, TYPE.TORCH
+];
+document.addEventListener('keydown', e => {
+    if (e.key === 'g' || e.key === 'G') showGrid = !showGrid;
+    if (e.key === 'p' || e.key === 'P') togglePhysics();
+    if (e.key === 'e' || e.key === 'E') setTool('erase');
+    if (e.key === 'f' || e.key === 'F') setTool('fill');
+    if (e.key === 'q' || e.key === 'Q') setTool('place');
+    const num = parseInt(e.key);
+    if (!isNaN(num)) {
+        const idx = num === 0 ? 9 : num - 1;
+        if (keyBlocks[idx] !== undefined) selectBlock(keyBlocks[idx]);
+    }
+});
+
+// ════════════════════════════════════════════════
+//  存檔
+// ════════════════════════════════════════════════
+function saveWorld() {
+    const data = grid.map(row => row.map(c => c.type));
+    localStorage.setItem('sandboxPhysics', JSON.stringify(data));
+    showToast('💾 儲存成功！');
+}
+
+function loadWorld() {
+    const raw = localStorage.getItem('sandboxPhysics');
+    if (!raw) { showToast('❌ 沒有存檔'); return; }
+    const data = JSON.parse(raw);
+    for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+            setCell(r, c, data[r]?.[c] ?? 0);
+    showToast('📂 載入成功！');
+}
+
+function clearWorld() {
+    initGrid();
+    showToast('🗑️ 已清除');
+}
+
+function showToast(msg) {
+    const t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = `position:fixed;bottom:30px;left:50%;transform:translateX(-50%);
+        background:#333;color:white;padding:8px 20px;border-radius:20px;
+        font-size:0.9rem;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,0.4)`;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2000);
+}
+
+// ════════════════════════════════════════════════
+//  地形生成
+// ════════════════════════════════════════════════
+function generateTerrain() {
+    initGrid();
+    // 地面
+    const groundY = Math.floor(ROWS * 0.7);
+    for (let c = 0; c < COLS; c++) {
+        const h = Math.floor(Math.sin(c * 0.08) * 5 + Math.sin(c * 0.03) * 8);
+        const top = groundY + h;
+        setCell(top, c, TYPE.GRASS);
+        for (let r = top+1; r < top+5; r++) setCell(r, c, TYPE.DIRT);
+        for (let r = top+5; r < ROWS; r++) setCell(r, c, TYPE.STONE);
+    }
+    // 水池
+    for (let c = 30; c < 50; c++)
+        for (let r = groundY+2; r < groundY+6; r++)
+            if (grid[r][c].type === TYPE.EMPTY) setCell(r, c, TYPE.WATER);
+    // 樹
+    [10, 25, 60, 80, 100].forEach(tc => {
+        const base = groundY - 1;
+        for (let i = 0; i < 8; i++) setCell(base-i, tc, TYPE.WOOD);
+        for (let dr = -3; dr <= 0; dr++)
+            for (let dc = -3; dc <= 3; dc++)
+                if (isEmpty(base-8+dr, tc+dc)) setCell(base-8+dr, tc+dc, TYPE.GRASS);
+    });
+    showToast('🌍 地形生成完成！');
+}
+
+// ════════════════════════════════════════════════
+//  主迴圈
+// ════════════════════════════════════════════════
+let lastTime = 0;
+let fps = 0;
+let frameCount2 = 0;
+let fpsTimer = 0;
+
+function gameLoop(timestamp) {
+    const dt = timestamp - lastTime;
+    lastTime = timestamp;
+
+    fpsTimer += dt;
+    frameCount2++;
+    if (fpsTimer >= 500) {
+        fps = Math.round(frameCount2 / fpsTimer * 1000);
+        frameCount2 = 0;
+        fpsTimer = 0;
+        // 統計粒子
+        let count = 0;
+        for (let r = 0; r < ROWS; r++)
+            for (let c = 0; c < COLS; c++)
+                if (grid[r][c].type !== TYPE.EMPTY) count++;
+        document.getElementById('particleCount').textContent = count;
+        document.getElementById('fpsDisplay').textContent = fps;
+    }
+
+    updatePhysics();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+// 初始化
+initGrid();
+selectBlock(TYPE.SAND);
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
