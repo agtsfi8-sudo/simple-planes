@@ -237,7 +237,6 @@ function step(dt){ const P=PL[PLANE]; if(S.paused||S.crashed) return;
   sampleT-=dt; if(sampleT<=0){ sampleT=0.12; const h=scene.sampleHeight(cg,model?[model]:[]); if(h!==undefined) S.gh=h; }
   if(S.gh!=null){ S.agl=cg.height-S.gh-P.gear;
     if(S.agl<0||(S.ground&&S.agl<3)){ const hard=S.vs<-6||Math.abs(S.rol)>12*D2R||S.pit<-3*D2R||!S.gear||S.pit>15*D2R||S.v>110;
-      if(!S.ground && hard){ crash(); return; }
       S.ground=true; if(S.pit<0) S.pit=0; cg.height=S.gh+P.gear; S.pos=C.Cartographic.toCartesian(cg); S._h=cg.height; frame(); }
     else if(S.ground) S.ground=false; }
   else S.agl=NaN; }
